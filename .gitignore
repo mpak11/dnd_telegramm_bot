@@ -1,0 +1,41 @@
+.env
+.env.local
+.env.production
+.env.staging
+config.json
+
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+database/*.db
+database/data/
+
+# ===== ЛОГИ =====
+# Файлы логов
+logs/
+*.log
+log/
+
+# ===== ВРЕМЕННЫЕ ФАЙЛЫ =====
+# Кэш и временные файлы
+.cache/
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ===== РЕДАКТОРЫ =====
+# VS Code
+.vscode/
+*.code-workspace
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ===== ОПЕРАЦИОННЫЕ СИСТЕМЫ =====
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
