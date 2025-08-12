@@ -5,8 +5,6 @@ require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
 const config = require("./config/config");
 const { setupHandlers } = require('./src/handlers');
-const characterCreation = require('./systems/characterCreation');
-const { log } = require('./utils/logger');
 const { setupMiddleware } = require("./middleware");
 const { log } = require("./utils/logger");
 const questScheduler = require("./systems/questScheduler");

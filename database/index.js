@@ -120,9 +120,6 @@ class Database {
       }
 
       // Запускаем миграции
-      const migrator = require('./migrations');
-      await migrator.migrate(this);
-
       this.isInitialized = true;
       logDatabase('✅ База данных инициализирована');
       
