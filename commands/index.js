@@ -1,5 +1,7 @@
 // Централизованная регистрация команд
 
+const { setupHandlers } = require("../src/handlers");
+const characterCreation = require("../systems/characterCreation");
 const { log } = require("../utils/logger");
 const { escapeMarkdown } = require("../utils/markdown");
 const { User, Character } = require("../database/models");
@@ -13,546 +15,143 @@ const tradeSessions = new Map();
 const equipmentSystem = require("../systems/equipmentSystem");
 const craftingSystem = require("../systems/craftingSystem");
 const advancedMerchantSystem = require("../systems/advancedMerchantSystem");
+э;
 
 function setupCommands(bot) {
-  // ТЕСТОВЫЙ ОБРАБОТЧИК - для проверки, что текст вообще доходит
-  bot.use(async (ctx, next) => {
-    if (ctx.message && ctx.message.text) {
-      log(
-        `[TEST] Сообщение получено: "${ctx.message.text}" от ${ctx.from.id} в чате ${ctx.chat.id} (тип: ${ctx.chat.type})`
-      );
-    }
-    await next();
-  });
+  log("🚀 Инициализация команд...", "info");
 
-  // Основные команды
-  bot.command("start", handleStart);
-  bot.command("help", handleHelp);
-  bot.command("status", handleStatus);
+  setupHandlers(bot);
 
-  // Команды персонажа
-  bot.command("create", handleCreateCharacter);
-  bot.command("hero", handleShowCharacter);
-  bot.command("inventory", handleShowInventory);
-  bot.command("stats", handleShowStats);
-  bot.command("delete", handleDeleteCharacter);
-  bot.command("setname", handleSetName);
-  bot.command("quickcreate", handleQuickCreate);
-  bot.command("debug_chars", handleDebugCharacters);
-  bot.command("graveyard", handleGraveyard);
-  bot.command("improve", handleImprove);
-  bot.command("improvements", handleImprovementHistory);
-
-  // Команды квестов
-  bot.command("quest", handleShowQuest);
-  bot.command("quests", handleListQuests);
-  bot.command("getquest", handleGetQuest);
-
-  // Команды инвентаря
-  bot.command("give", handleGive);
-  bot.command("trade", handleTrade);
-  bot.command("trades", handleActiveTrades);
-  bot.command("chest", handleCreateChest);
-  bot.command("use", handleUseItem);
-  bot.command("gift", handleGift);
-
-  // Команды экипировки
-  bot.command("equipment", handleEquipment);
-  bot.command("equip", handleEquipment);
-  bot.command("eq", handleEquipment);
-  bot.command("equip_item", handleEquipItem);
-  bot.command("unequip", handleUnequipItem);
-
-  // Команды магазина
-  bot.command("shop", handleShop);
-  bot.command("buy", handleBuy);
-  bot.command("sell", handleSell);
-
-  // Команды крафта
-  bot.command("craft", handleCraft);
-  bot.command("recipes", handleRecipes);
-
-  // Команды поиска
-  bot.command("itemsearch", handleItemSearch);
-  bot.command("iteminfo", handleItemInfo);
-
-  // Административные команды
-  bot.command("admin", handleAdmin);
-  bot.command("debug_sessions", handleDebugSessions);
-  bot.command("test_name", handleTestName);
-  bot.command("check_bot", handleCheckBot);
-
-  // Обработка текстовых сообщений (ДО callback_query!)
-  bot.on("text", async (ctx, next) => {
-    // Пропускаем команды
-    const text = ctx.message.text;
-    if (text.startsWith("/")) {
-      return next();
-    }
-
-    log(
-      `[Commands] Обработка текста: "${text}" от ${ctx.from.id} в чате ${ctx.chat.id}`
-    );
-
-    // Проверяем систему создания персонажа
-    try {
-      const handled = await characterCreation.handleNameInput(ctx);
-      if (handled) {
-        log(`[Commands] Текст обработан как имя персонажа`);
-        return; // Не передаем дальше
+  function setupCommands(bot) {
+    // ТЕСТОВЫЙ ОБРАБОТЧИК - для проверки, что текст вообще доходит
+    bot.use(async (ctx, next) => {
+      if (ctx.message && ctx.message.text) {
+        log(
+          `[TEST] Сообщение получено: "${ctx.message.text}" от ${ctx.from.id} в чате ${ctx.chat.id} (тип: ${ctx.chat.type})`
+        );
       }
-    } catch (error) {
-      log(`[Commands] Ошибка обработки имени: ${error.message}`, "error");
-    }
+      await next();
+    });
 
-    // Передаем дальше
-    await next();
-  });
+    // Команды квестов
+    bot.command("quest", handleShowQuest);
+    bot.command("quests", handleListQuests);
+    bot.command("getquest", handleGetQuest);
 
-  // Обработка callback queries
-  bot.on("callback_query", async (ctx) => {
-    const data = ctx.callbackQuery.data;
+    // Команды инвентаря
+    bot.command("trade", handleTrade);
+    bot.command("trades", handleActiveTrades);
+    bot.command("chest", handleCreateChest);
 
-    log(`[Callback] Получен callback: ${data} от ${ctx.from.id}`);
+    // Команды экипировки
+    bot.command("equipment", handleEquipment);
+    bot.command("equip", handleEquipment);
+    bot.command("eq", handleEquipment);
+    bot.command("equip_item", handleEquipItem);
+    bot.command("unequip", handleUnequipItem);
 
-    // Система создания персонажа
-    if (await characterCreation.handleCallback(ctx)) {
-      return;
-    }
+    // Команды магазина
+    bot.command("shop", handleShop);
+    bot.command("buy", handleBuy);
+    bot.command("sell", handleSell);
 
-    // Другие callbacks
-    if (data === "create_character") {
-      await handleCreateCharacter(ctx);
-    } else if (data === "show_hero") {
-      await handleShowCharacter(ctx);
-    } else if (data === "delete_confirm") {
-      await confirmDeleteCharacter(ctx);
-    } else if (data === "delete_cancel") {
-      await ctx.answerCbQuery("Удаление отменено");
-      await ctx.deleteMessage();
-    } else if (data === "quest_roll") {
-      await handleQuestRoll(ctx);
-    } else if (data.startsWith("improve_")) {
-      await handleImprovementCallback(ctx);
-    } else if (data.startsWith("trade_")) {
-      await handleTradeCallback(ctx);
-    } else if (data.startsWith("chest_")) {
-      await handleChestCallback(ctx);
-    } else if (data.startsWith("use_")) {
-      await handleUseItemCallback(ctx);
-    } else if (data.startsWith("equip_item_")) {
-      await handleEquipItemCallback(ctx);
-    } else if (data.startsWith("unequip_item_")) {
-      await handleUnequipItemCallback(ctx);
-    } else if (data === "show_inventory") {
-      await handleShowInventory(ctx);
-    } else if (data === "equip_menu") {
-      await handleEquipMenu(ctx);
-    } else if (data === "cancel") {
-      await ctx.answerCbQuery("Отменено");
-      await ctx.deleteMessage();
-    } else if (data === "back_to_equipment") {
-      await handleEquipmentCallback(ctx);
-    }
+    // Команды крафта
+    bot.command("craft", handleCraft);
+    bot.command("recipes", handleRecipes);
 
-    // Callbacks для магазина
-    else if (data.startsWith("visit_merchant_")) {
-      await handleVisitMerchantCallback(ctx);
-    } else if (data.startsWith("merchant_buy_")) {
-      await handleMerchantBuyCallback(ctx);
-    } else if (data.startsWith("merchant_sell_")) {
-      await handleMerchantSellCallback(ctx);
-    } else if (data.startsWith("buy_item_")) {
-      await handleBuyItemCallback(ctx);
-    } else if (data.startsWith("sell_item_")) {
-      await handleSellItemCallback(ctx);
-    }
+    // Команды поиска
+    bot.command("itemsearch", handleItemSearch);
+    bot.command("iteminfo", handleItemInfo);
 
-    // Callbacks для крафта
-    else if (data.startsWith("craft_item_")) {
-      await handleCraftItemCallback(ctx);
-    } else if (data.startsWith("craft_view_")) {
-      await handleCraftViewCallback(ctx);
-    }
+    // Административные команды
+    bot.command("admin", handleAdmin);
+    bot.command("debug_sessions", handleDebugSessions);
+    bot.command("test_name", handleTestName);
 
-    // Общие callbacks
-    else if (data === "shop_main") {
-      await handleShop(ctx);
-    }
-  });
+    // Обработка текстовых сообщений (ДО callback_query!)
+    bot.on("text", async (ctx, next) => {
+      const text = ctx.message.text;
+      if (text.startsWith("/")) {
+        return next();
+      }
 
-  log("✅ Команды зарегистрированы", "success");
-}
-
-// === Обработчики команд ===
-
-async function handleStart(ctx) {
-  // Создаем или обновляем пользователя
-  await User.findOrCreate(ctx.from);
-
-  let welcomeText = `
-🎲 **Добро пожаловать в D&D Bot!**
-
-Я - ваш проводник в мире приключений!
-
-**🎯 Основные команды:**
-/create - Создать персонажа
-/hero - Посмотреть персонажа
-/stats - Детальная статистика
-/inventory - Открыть инвентарь
-/quest - Текущий квест
-/quests - История квестов
-/help - Справка
-
-**📖 Как играть:**
-1. Создайте персонажа командой /create
-2. Выберите расу и класс
-3. Дождитесь ежедневных квестов (1-3 в день)
-4. Бросайте кубик и испытывайте судьбу!
-5. Получайте опыт, золото и легендарные предметы!
-`;
-
-  // Добавляем рекомендацию для групп
-  if (ctx.chat.type === "group" || ctx.chat.type === "supergroup") {
-    welcomeText += `
-**⚠️ Для групп рекомендуется:**
-Использовать /quickcreate для быстрого создания персонажа
-Пример: /quickcreate human WARRIOR Горак
-`;
-  }
-
-  welcomeText += `
-Квесты выдаются с 10:00 до 22:00 по МСК
-`;
-
-  // Проверяем, есть ли персонаж
-  const character = await Character.findActive(ctx.from.id, ctx.chat.id);
-
-  const buttons = character
-    ? [[{ text: "👤 Мой герой", callback_data: "show_hero" }]]
-    : [[{ text: "🎭 Создать персонажа", callback_data: "create_character" }]];
-
-  await ctx.reply(welcomeText, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: buttons,
-    },
-  });
-}
-
-async function handleHelp(ctx) {
-  const helpText = `
-📖 **Справка по командам**
-
-**Персонаж:**
-/create - Создать нового персонажа
-/quickcreate - Быстрое создание (для групп)
-/hero - Информация о персонаже
-/stats - Детальная статистика
-/inventory - Ваш инвентарь
-/improve - Улучшить характеристики 💎
-/improvements - История улучшений
-/delete - Удалить персонажа
-/setname - Ввести имя (при создании)
-/graveyard - Кладбище героев ⚰️
-
-**Квесты:**
-/quest - Текущий квест и выполнение
-/quests - История выполненных квестов
-/getquest - Получить новый квест вручную
-
-**Предметы и обмен:**
-/inventory - Инвентарь с возможностью использования
-/trade - Начать обмен с другим игроком
-/trades - Активные предложения обмена
-/give - Передать предметы (в разработке)
-/chest - Создать сундук с сокровищами
-/use - Использовать предмет
-
-**Прочее:**
-/status - Статус бота
-/check\\_bot - Проверка прав бота
-/help - Эта справка
-
-**🎯 Система квестов:**
-• Автоматическая выдача в 10:00, 14:00, 18:00 МСК
-• До 3 квестов в день на чат
-• Время выполнения: 4 часа
-• Результат зависит от броска 1d20 + модификатор
-• **Успешные квесты дают предметы!**
-
-**💎 Система предметов:**
-• Редкость: ⚪ Обычный → 🟢 Необычный → 🔵 Редкий → 🟣 Эпический → 🟠 Легендарный
-• Предметы выпадают из квестов
-• Критический успех (20) дает больше лута
-• Уникальные легендарные предметы существуют в единственном экземпляре
-
-**🤝 Система обмена:**
-• Обмен доступен только в групповых чатах
-• Можно обменивать предметы и золото
-• Предложения действуют 5 минут
-• Безопасная система с подтверждением
-
-**💎 Улучшение характеристик:**
-• На 4 и 8 уровнях даются 2 очка улучшения
-• Можно потратить 2 очка на +2 к одной характеристике
-• Или по 1 очку на +1 к двум разным характеристикам
-• Максимальное значение характеристики: 20
-
-**💀 Смерть персонажа:**
-• При HP = 0 персонаж умирает
-• Мертвые персонажи не могут выполнять квесты
-• Используйте /create для создания нового героя
-• /graveyard - посмотреть павших героев
-
-**📝 Быстрое создание для групп:**
-/quickcreate раса класс имя
-
-**Пример:**
-/quickcreate human WARRIOR Горак Сильный
-
-**Расы:** human, elf, dwarf, halfling
-**Классы:** WARRIOR, ROGUE, MAGE, CLERIC, BARBARIAN, RANGER
-
-Максимальный уровень: 10
-Квесты доступны с 10:00 до 22:00 МСК
-
-⚠️ **Для работы в группах бот должен быть администратором или иметь отключенный режим конфиденциальности**
-`;
-
-  await ctx.reply(helpText, { parse_mode: "Markdown" });
-}
-
-async function handleStatus(ctx) {
-  const chatId = ctx.chat.id;
-  const userId = ctx.from.id;
-
-  // Получаем персонажа если есть
-  const character = await Character.findActive(userId, chatId);
-
-  const statusText = `
-📊 **Статус бота**
-
-🎲 Версия: 2.0
-📱 Чат ID: ${chatId}
-👤 Ваш ID: ${userId}
-⏰ Время сервера: ${new Date().toLocaleString("ru-RU", {
-    timeZone: "Europe/Moscow",
-  })} МСК
-
-${
-  character
-    ? `\n🎭 Ваш персонаж: ${character.name} (${character.level} ур.)`
-    : "\n❌ Персонаж не создан"
-}
-
-Квесты выдаются с 10:00 до 22:00 МСК
-`;
-
-  await ctx.reply(statusText, { parse_mode: "Markdown" });
-}
-
-// Создание персонажа
-async function handleCreateCharacter(ctx) {
-  log(`[Commands] Вызвана команда создания персонажа от ${ctx.from.id}`);
-
-  await User.findOrCreate(ctx.from);
-
-  // Если это callback от кнопки, отвечаем на него
-  if (ctx.callbackQuery) {
-    await ctx.answerCbQuery();
-  }
-
-  await characterCreation.startCreation(ctx);
-}
-
-// Показать персонажа
-async function handleShowCharacter(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const character = await Character.findActive(userId, chatId);
-
-  if (!character) {
-    await ctx.reply(
-      "❌ У вас нет персонажа!\n\nИспользуйте /create для создания.",
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  let display = await character.getFullDisplay();
-
-  // Добавляем информацию о смерти
-  if (character.hp_current <= 0) {
-    display =
-      `☠️ **МЕРТВ** ☠️\n\n${display}\n\n` +
-      `_Этот персонаж пал в бою. Его подвиги будут помнить в веках._\n\n` +
-      `Используйте /create для создания нового героя.`;
-  }
-
-  await ctx.reply(display, { parse_mode: "Markdown" });
-}
-
-async function handleQuestRoll(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  try {
-    await ctx.answerCbQuery("🎲 Бросаем кубик...");
-  } catch (error) {
-    // Игнорируем ошибку answerCbQuery
-  }
-
-  try {
-    // Получаем персонажа
-    const character = await Character.findActive(userId, chatId);
-    if (!character) {
-      await ctx.editMessageText("❌ Персонаж не найден!");
-      return;
-    }
-
-    // Проверяем квест
-    const quest = await questSystem.getActiveQuest(chatId);
-    if (!quest) {
-      await ctx.editMessageText("❌ Квест уже завершен или истек!");
-      return;
-    }
-
-    // Бросаем кубик
-    const roll = Math.floor(Math.random() * 20) + 1;
-
-    // Анимация броска
-    const diceEmojis = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
-    let lastDice = null;
-
-    for (let i = 0; i < 3; i++) {
-      let randomDice;
-      // Гарантируем, что выбираем другой эмодзи
-      do {
-        randomDice = diceEmojis[Math.floor(Math.random() * diceEmojis.length)];
-      } while (randomDice === lastDice && diceEmojis.length > 1);
-
-      lastDice = randomDice;
+      log(
+        `[Commands] Обработка текста: "${text}" от ${ctx.from.id} в чате ${ctx.chat.id}`
+      );
 
       try {
-        await ctx.editMessageText(`${randomDice} Бросаем кубик...`);
-      } catch (error) {
-        // Если ошибка из-за одинакового текста, просто пропускаем
-        if (!error.message.includes("message is not modified")) {
-          throw error;
+        const handled = await characterCreation.handleNameInput(ctx);
+        if (handled) {
+          log(`[Commands] Текст обработан как имя персонажа`);
+          return;
         }
+      } catch (error) {
+        log(`[Commands] Ошибка обработки имени: ${error.message}`, "error");
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+      await next();
+    });
 
-    // Выполняем квест
-    const result = await questSystem.executeQuest(character, roll);
+    // Обработка callback queries
+    bot.on("callback_query", async (ctx) => {
+      const data = ctx.callbackQuery.data;
 
-    if (!result.success) {
-      await ctx.editMessageText(`❌ ${result.message}`);
-      return;
-    }
+      log(`[Callback] Получен callback: ${data} от ${ctx.from.id}`);
 
-    // Формируем сообщение с результатом
-    const config = require("../config/config");
-    const statConfig = config.STATS[result.statUsed];
-    const criticalText =
-      roll === 20
-        ? "⚡ КРИТИЧЕСКИЙ УСПЕХ! ⚡\n"
-        : roll === 1
-        ? "💀 КРИТИЧЕСКИЙ ПРОВАЛ! 💀\n"
-        : "";
-
-    let message = `🎯 **${result.questTitle}**\n\n`;
-    message += criticalText;
-    message += `🎲 Бросок: **${roll}**\n`;
-    message += `${statConfig.emoji} Модификатор ${statConfig.name}: ${
-      result.statModifier >= 0 ? "+" : ""
-    }${result.statModifier}\n`;
-    message += `📊 Итого: **${result.totalRoll}**\n\n`;
-
-    message += `${result.questResult.result_text}\n\n`;
-
-    message += `**Результаты:**\n`;
-    if (result.xpGained > 0) {
-      message += `✨ Опыт: +${result.xpGained} XP\n`;
-    }
-    if (result.xpGained > 0) {
-      message += `✨ Опыт: +${result.xpGained} XP\n`;
-    }
-
-    // Показываем золото отдельно
-    if (result.goldGained > 0) {
-      if (result.lootGold > 0) {
-        message += `💰 Золото: +${
-          result.goldGained - result.lootGold
-        } (квест) +${result.lootGold} (добыча) = **+${result.goldGained}**\n`;
-      } else {
-        message += `💰 Золото: +${result.goldGained}\n`;
+      // Система создания персонажа
+      if (await characterCreation.handleCallback(ctx)) {
+        return;
       }
-    } else if (result.goldGained < 0) {
-      message += `💸 Потеряно золота: ${Math.abs(result.goldGained)}\n`;
-    }
 
-    // Показываем найденные предметы
-    if (result.lootItems && result.lootItems.length > 0) {
-      message += `\n🎁 **Найденные предметы:**\n`;
-
-      const rarityEmojis = {
-        common: "⚪",
-        uncommon: "🟢",
-        rare: "🔵",
-        epic: "🟣",
-        legendary: "🟠",
-      };
-
-      for (const item of result.lootItems) {
-        const emoji = rarityEmojis[item.rarity] || "❓";
-        message += `${emoji} ${item.name}\n`;
+      // Другие callbacks
+      if (data === "quest_roll") {
+        await handleQuestRoll(ctx);
+      } else if (data.startsWith("improve_")) {
+        await handleImprovementCallback(ctx);
+      } else if (data.startsWith("trade_")) {
+        await handleTradeCallback(ctx);
+      } else if (data.startsWith("chest_")) {
+        await handleChestCallback(ctx);
+      } else if (data.startsWith("equip_item_")) {
+        await handleEquipItemCallback(ctx);
+      } else if (data.startsWith("unequip_item_")) {
+        await handleUnequipItemCallback(ctx);
+      } else if (data === "equip_menu") {
+        await handleEquipMenu(ctx);
+      } else if (data === "cancel") {
+        await ctx.answerCbQuery("Отменено");
+        await ctx.deleteMessage();
+      } else if (data === "back_to_equipment") {
+        await handleEquipmentCallback(ctx);
       }
-    }
 
-    if (result.damageDealt > 0) {
-      message += `💔 Урон: -${result.damageDealt} HP (${result.characterHp}/${result.characterMaxHp})\n`;
-    }
-
-    if (result.levelUp) {
-      message += `\n🎉 **НОВЫЙ УРОВЕНЬ! ${result.levelUp.from} → ${result.levelUp.to}**\n`;
-
-      if (result.levelUp.abilityPointsGained > 0) {
-        message += `💎 **Получено ${result.levelUp.abilityPointsGained} очка улучшения!** Используйте /improve\n`;
+      // Callbacks для магазина
+      else if (data.startsWith("visit_merchant_")) {
+        await handleVisitMerchantCallback(ctx);
+      } else if (data.startsWith("merchant_buy_")) {
+        await handleMerchantBuyCallback(ctx);
+      } else if (data.startsWith("merchant_sell_")) {
+        await handleMerchantSellCallback(ctx);
+      } else if (data.startsWith("buy_item_")) {
+        await handleBuyItemCallback(ctx);
+      } else if (data.startsWith("sell_item_")) {
+        await handleSellItemCallback(ctx);
       }
-    }
 
-    // Проверяем смерть персонажа
-    if (result.isDead) {
-      message += `\n☠️ **ПЕРСОНАЖ ПОГИБ!** ☠️\n`;
-      message += `\n_${character.name} пал смертью храбрых, выполняя опасный квест._\n`;
-      message += `_Покойся с миром, отважный ${character.getClassInfo()}._\n\n`;
-      message += `Используйте /create для создания нового персонажа.`;
-    }
-    await ctx.editMessageText(message, { parse_mode: "Markdown" });
+      // Callbacks для крафта
+      else if (data.startsWith("craft_item_")) {
+        await handleCraftItemCallback(ctx);
+      } else if (data.startsWith("craft_view_")) {
+        await handleCraftViewCallback(ctx);
+      }
 
-    log(
-      `${character.name} выполнил квест "${result.questTitle}" с результатом ${result.totalRoll}`
-    );
-  } catch (error) {
-    log(`Ошибка выполнения квеста: ${error.message}`, "error");
+      // Общие callbacks
+      else if (data === "shop_main") {
+        await handleShop(ctx);
+      }
+    });
 
-    try {
-      await ctx.editMessageText(
-        "❌ Произошла ошибка при выполнении квеста.\nПопробуйте еще раз через несколько секунд.",
-        { parse_mode: "Markdown" }
-      );
-    } catch (editError) {
-      // Если не можем отредактировать сообщение, отправляем новое
-      await ctx.reply(
-        "❌ Произошла ошибка при выполнении квеста.\nПопробуйте еще раз через несколько секунд.",
-        { parse_mode: "Markdown" }
-      );
-    }
+    log("✅ Команды зарегистрированы", "success");
   }
 }
 
@@ -569,10 +168,10 @@ async function handleEquipMenu(ctx) {
   try {
     // Получаем предметы, которые можно экипировать
     const inventory = await character.getInventory();
-    
+
     // ОТЛАДКА: Выводим информацию о предметах
     log(`[DEBUG] Всего предметов в инвентаре: ${inventory.length}`);
-    
+
     for (let i = 0; i < Math.min(5, inventory.length); i++) {
       const item = inventory[i];
       log(`[DEBUG] Предмет ${i + 1}: ${item.name}`);
@@ -583,15 +182,18 @@ async function handleEquipMenu(ctx) {
     }
 
     // Ищем предметы, которые можно экипировать (оружие и броню)
-    const equipableItems = inventory.filter(item => {
+    const equipableItems = inventory.filter((item) => {
       // Проверяем по типу предмета, а не только по slot_type
-      const isWeapon = item.type === 'weapon';
-      const isArmor = item.type === 'armor';
-      const isShield = item.type === 'shield';
-      const hasSlotType = item.slot_type && item.slot_type !== 'null' && item.slot_type !== '';
-      
-      log(`[DEBUG] Предмет ${item.name}: weapon=${isWeapon}, armor=${isArmor}, shield=${isShield}, slot_type=${item.slot_type}`);
-      
+      const isWeapon = item.type === "weapon";
+      const isArmor = item.type === "armor";
+      const isShield = item.type === "shield";
+      const hasSlotType =
+        item.slot_type && item.slot_type !== "null" && item.slot_type !== "";
+
+      log(
+        `[DEBUG] Предмет ${item.name}: weapon=${isWeapon}, armor=${isArmor}, shield=${isShield}, slot_type=${item.slot_type}`
+      );
+
       return isWeapon || isArmor || isShield || hasSlotType;
     });
 
@@ -599,26 +201,26 @@ async function handleEquipMenu(ctx) {
 
     if (equipableItems.length === 0) {
       await ctx.answerCbQuery("❌ У вас нет предметов для экипировки!");
-      
+
       // Показываем детальную информацию для отладки
       let debugMessage = "🔍 **Отладочная информация:**\n\n";
       debugMessage += `Всего предметов: ${inventory.length}\n\n`;
-      
+
       for (let i = 0; i < Math.min(3, inventory.length); i++) {
         const item = inventory[i];
         debugMessage += `**${item.name}**\n`;
         debugMessage += `Тип: ${item.type}\n`;
-        debugMessage += `slot_type: ${item.slot_type || 'не указан'}\n`;
-        debugMessage += `weapon_type: ${item.weapon_type || 'не указан'}\n\n`;
+        debugMessage += `slot_type: ${item.slot_type || "не указан"}\n`;
+        debugMessage += `weapon_type: ${item.weapon_type || "не указан"}\n\n`;
       }
-      
+
       await ctx.editMessageText(debugMessage, {
         parse_mode: "Markdown",
         reply_markup: {
-          inline_keyboard: [[
-            { text: "◀️ Назад", callback_data: "back_to_equipment" }
-          ]]
-        }
+          inline_keyboard: [
+            [{ text: "◀️ Назад", callback_data: "back_to_equipment" }],
+          ],
+        },
       });
       return;
     }
@@ -635,27 +237,29 @@ async function handleEquipMenu(ctx) {
     };
 
     // Простой список всех экипируемых предметов
-    for (const item of equipableItems.slice(0, 10)) { // Ограничиваем 10 предметами
+    for (const item of equipableItems.slice(0, 10)) {
+      // Ограничиваем 10 предметами
       const emoji = rarityEmoji[item.rarity] || "⚪";
       const typeInfo = item.weapon_type || item.armor_type || item.type;
-      
+
       message += `${emoji} **${item.name}** (${typeInfo})\n`;
-      
-      keyboard.push([{
-        text: `${emoji} ${item.name}`,
-        callback_data: `equip_item_${item.id}`
-      }]);
+
+      keyboard.push([
+        {
+          text: `${emoji} ${item.name}`,
+          callback_data: `equip_item_${item.id}`,
+        },
+      ]);
     }
 
     keyboard.push([
-      { text: "◀️ Назад к экипировке", callback_data: "back_to_equipment" }
+      { text: "◀️ Назад к экипировке", callback_data: "back_to_equipment" },
     ]);
 
     await ctx.editMessageText(message, {
       parse_mode: "Markdown",
       reply_markup: { inline_keyboard: keyboard },
     });
-
   } catch (error) {
     log(`Ошибка меню экипировки: ${error.message}`, "error");
     await ctx.answerCbQuery("❌ Ошибка при загрузке меню экипировки");
@@ -676,8 +280,8 @@ async function handleEquipItemCallback(ctx) {
   try {
     // Проверяем, что предмет есть в инвентаре
     const inventory = await character.getInventory();
-    const item = inventory.find(i => i.id === itemId);
-    
+    const item = inventory.find((i) => i.id === itemId);
+
     if (!item) {
       await ctx.answerCbQuery("❌ Предмет не найден в инвентаре!");
       return;
@@ -688,35 +292,42 @@ async function handleEquipItemCallback(ctx) {
 
     // Определяем слот для экипировки
     let targetSlot = item.slot_type;
-    
+
     // Если slot_type не указан, определяем по типу предмета
-    if (!targetSlot || targetSlot === 'null') {
-      if (item.type === 'weapon') {
-        targetSlot = 'main_hand';
-      } else if (item.type === 'armor') {
-        targetSlot = 'chest';
-      } else if (item.type === 'shield') {
-        targetSlot = 'off_hand';
+    if (!targetSlot || targetSlot === "null") {
+      if (item.type === "weapon") {
+        targetSlot = "main_hand";
+      } else if (item.type === "armor") {
+        targetSlot = "chest";
+      } else if (item.type === "shield") {
+        targetSlot = "off_hand";
       } else {
-        await ctx.answerCbQuery("❌ Не удается определить слот для этого предмета!");
+        await ctx.answerCbQuery(
+          "❌ Не удается определить слот для этого предмета!"
+        );
         return;
       }
     }
 
     // Если есть система экипировки, используем её
-    if (typeof equipmentSystem !== 'undefined') {
+    if (typeof equipmentSystem !== "undefined") {
       const result = await equipmentSystem.equipItem(character.id, itemId);
       await ctx.answerCbQuery("✅ Предмет экипирован!");
-      
-      await ctx.editMessageText(`✅ **${item.name}** экипирован в слот: ${result.slot}`, {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "◀️ К экипировке", callback_data: "back_to_equipment" },
-            { text: "🎒 Экипировать еще", callback_data: "equip_menu" }
-          ]]
+
+      await ctx.editMessageText(
+        `✅ **${item.name}** экипирован в слот: ${result.slot}`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "◀️ К экипировке", callback_data: "back_to_equipment" },
+                { text: "🎒 Экипировать еще", callback_data: "equip_menu" },
+              ],
+            ],
+          },
         }
-      });
+      );
     } else {
       // Простая альтернатива без системы экипировки
       // Помечаем предмет как экипированный в инвентаре
@@ -724,22 +335,23 @@ async function handleEquipItemCallback(ctx) {
         "UPDATE inventory SET equipped = 1, equipped_slot = ? WHERE character_id = ? AND item_id = ?",
         [targetSlot, character.id, itemId]
       );
-      
+
       await ctx.answerCbQuery("✅ Предмет экипирован!");
-      
+
       await ctx.editMessageText(`✅ **${item.name}** экипирован!`, {
         parse_mode: "Markdown",
         reply_markup: {
-          inline_keyboard: [[
-            { text: "◀️ К экипировке", callback_data: "back_to_equipment" },
-            { text: "🎒 Экипировать еще", callback_data: "equip_menu" }
-          ]]
-        }
+          inline_keyboard: [
+            [
+              { text: "◀️ К экипировке", callback_data: "back_to_equipment" },
+              { text: "🎒 Экипировать еще", callback_data: "equip_menu" },
+            ],
+          ],
+        },
       });
     }
 
     log(`${character.name} экипировал ${item.name}`);
-
   } catch (error) {
     log(`Ошибка экипировки предмета: ${error.message}`, "error");
     await ctx.answerCbQuery(`❌ Ошибка: ${error.message}`);
@@ -1385,92 +997,6 @@ async function startTradeDialog(ctx, fromCharacter, toCharacterId) {
   });
 }
 
-async function handleGift(ctx) {
-  const text = ctx.message.text;
-  const parts = text.split(" ");
-
-  if (parts.length < 3) {
-    await ctx.reply(
-      `🎁 **Команда для подарков**\n\n` +
-        `**Использование:**\n` +
-        `/gift @имя сумма\n` +
-        `/gift @имя предмет\n\n` +
-        `**Примеры:**\n` +
-        `• /gift @Ivan 50\n` +
-        `• /gift @Maria 100 золота\n` +
-        `• /gift @Alex Зелье лечения\n\n` +
-        `**Доступные действия:**\n` +
-        `• Подарить золото (число)\n` +
-        `• Подарить предмет (название)\n`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const giver = await Character.findActive(userId, chatId);
-  if (!giver) {
-    await ctx.reply("❌ У вас нет персонажа!");
-    return;
-  }
-
-  // Парсим получателя
-  const recipientName = parts[1].replace("@", "");
-
-  // Парсим что дарим
-  const giftText = parts.slice(2).join(" ");
-  const goldAmount = parseInt(giftText);
-
-  if (!isNaN(goldAmount) && goldAmount > 0) {
-    // Дарим золото
-    if (giver.gold < goldAmount) {
-      await ctx.reply(
-        `❌ У вас недостаточно золота!\n` +
-          `У вас: ${giver.gold} 💰\n` +
-          `Нужно: ${goldAmount} 💰`,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    await ctx.reply(
-      `🎁 **Подтверждение подарка**\n\n` +
-        `Получатель: @${recipientName}\n` +
-        `Подарок: 💰 ${goldAmount} золота\n\n` +
-        `⚠️ В текущей версии нужно использовать /trade для выбора получателя из списка.`,
-      { parse_mode: "Markdown" }
-    );
-  } else {
-    // Дарим предмет
-    const itemName = giftText;
-
-    // Ищем предмет в инвентаре
-    const inventory = await giver.getInventory();
-    const item = inventory.find((i) =>
-      i.name.toLowerCase().includes(itemName.toLowerCase())
-    );
-
-    if (!item) {
-      await ctx.reply(
-        `❌ Предмет "${itemName}" не найден в инвентаре!\n\n` +
-          `Используйте /inventory для просмотра доступных предметов.`,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    await ctx.reply(
-      `🎁 **Подтверждение подарка**\n\n` +
-        `Получатель: @${recipientName}\n` +
-        `Подарок: ${item.name}\n\n` +
-        `⚠️ Обмен предметами в разработке. Пока можно дарить только золото через /trade.`,
-      { parse_mode: "Markdown" }
-    );
-  }
-}
-
 async function showItemSelectionForTrade(
   ctx,
   fromCharacter,
@@ -1683,169 +1209,6 @@ ${quest.description}
   log(`Квест "${quest.title}" выдан вручную для чата ${chatId}`);
 }
 
-// Показать детальную статистику
-async function handleShowStats(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const character = await Character.findActive(userId, chatId);
-
-  if (!character) {
-    await ctx.reply(
-      "❌ У вас нет персонажа!\n\nИспользуйте /create для создания.",
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  const classConfig = require("../config/config").CLASSES[character.class];
-  const raceConfig = require("../config/config").RACES[character.race];
-
-  let statsText = `📊 **Детальная статистика**\n\n`;
-  statsText += `🎭 ${character.name}\n`;
-  statsText += `${character.getFullTitle()} • ${character.level} уровень\n\n`;
-
-  // Боевые характеристики
-  statsText += `**⚔️ Боевые параметры:**\n`;
-  statsText += `❤️ Здоровье: ${character.hp_current}/${character.hp_max}\n`;
-  statsText += `🎯 Бонус мастерства: +${character.getProficiencyBonus()}\n`;
-  statsText += `🗡️ Основная характеристика: ${classConfig.primaryStat}\n\n`;
-
-  // Все характеристики с бонусами к броскам
-  statsText += `**🎲 Модификаторы бросков:**\n`;
-  const config = require("../config/config");
-  for (const [stat, info] of Object.entries(config.STATS)) {
-    const bonus = character.getRollBonus(stat);
-    const isPrimary = classConfig.primaryStat === stat;
-    statsText += `${info.emoji} ${info.name}: ${bonus >= 0 ? "+" : ""}${bonus}`;
-    if (isPrimary) statsText += " ⭐";
-    statsText += "\n";
-  }
-
-  // Прогресс
-  statsText += `\n**📈 Прогресс:**\n`;
-  statsText += `✨ Опыт: ${character.experience}\n`;
-  statsText += `💰 Золото: ${character.gold}\n`;
-
-  // Расовые особенности
-  if (raceConfig.abilities.length > 0) {
-    statsText += `\n**${raceConfig.emoji} Расовые способности:**\n`;
-    for (const ability of raceConfig.abilities) {
-      statsText += `• ${ability}\n`;
-    }
-  }
-
-  await ctx.reply(statsText, { parse_mode: "Markdown" });
-}
-
-// Показать инвентарь
-async function handleShowInventory(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const character = await Character.findActive(userId, chatId);
-
-  if (!character) {
-    await ctx.reply(
-      "❌ У вас нет персонажа!\n\nИспользуйте /create для создания.",
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  const inventory = await character.getInventory();
-
-  // ОТЛАДКА: выводим структуру первого предмета
-  if (inventory.length > 0) {
-    log(`[DEBUG] Первый предмет в инвентаре:`, inventory[0]);
-  }
-
-  if (inventory.length === 0) {
-    await ctx.reply(
-      `🎒 **Инвентарь ${character.name}**\n\n` +
-        `Инвентарь пуст\n\n` +
-        `💰 Золото: ${character.gold}`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  let inventoryText = `🎒 **Инвентарь ${character.name}**\n\n`;
-
-  // Группируем по типу
-  const byType = {};
-  for (const item of inventory) {
-    if (!byType[item.type]) byType[item.type] = [];
-    byType[item.type].push(item);
-  }
-
-  const typeNames = {
-    weapon: "⚔️ Оружие",
-    armor: "🛡️ Броня",
-    consumable: "🧪 Расходники",
-    misc: "📦 Разное",
-    artifact: "💎 Артефакты",
-  };
-
-  const rarityEmojis = {
-    common: "⚪",
-    uncommon: "🟢",
-    rare: "🔵",
-    epic: "🟣",
-    legendary: "🟠",
-  };
-
-  let itemIndex = 1;
-  const itemButtons = [];
-
-  for (const [type, items] of Object.entries(byType)) {
-    inventoryText += `**${typeNames[type] || type}:**\n`;
-
-    for (const item of items) {
-      const emoji = rarityEmojis[item.rarity] || "❓";
-      inventoryText += `${itemIndex}. ${emoji} ${item.name}`;
-      if (item.quantity > 1) inventoryText += ` x${item.quantity}`;
-      if (item.equipped) inventoryText += " 📌";
-      inventoryText += "\n";
-
-      // Добавляем кнопки для расходников
-      if (type === "consumable" && !character.isDead()) {
-        // Сохраняем данные о предмете для кнопки
-        itemButtons.push({
-          text: `${itemIndex}. ${item.name}`, // Упрощаем текст кнопки
-          callback_data: `use_${item.id}`, // item.id - это ID из таблицы items
-        });
-      }
-
-      itemIndex++;
-    }
-    inventoryText += "\n";
-  }
-
-  inventoryText += `💰 **Золото:** ${character.gold}`;
-
-  const keyboard = [];
-
-  // Добавляем кнопки использования предметов
-  if (itemButtons.length > 0) {
-    for (let i = 0; i < itemButtons.length; i += 2) {
-      const row = [itemButtons[i]];
-      if (itemButtons[i + 1]) {
-        row.push(itemButtons[i + 1]);
-      }
-      keyboard.push(row);
-    }
-  }
-
-  log(`[DEBUG] Всего кнопок создано: ${itemButtons.length}`);
-
-  await ctx.reply(inventoryText, {
-    parse_mode: "Markdown",
-    reply_markup:
-      keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined,
-  });
-}
-
 async function handleUnequipItemCallback(ctx) {
   const userId = ctx.from.id;
   const chatId = ctx.chat.id;
@@ -2041,44 +1404,6 @@ async function handleItemInfo(ctx) {
     log(`Ошибка информации о предмете: ${error.message}`, "error");
     await ctx.reply("❌ Ошибка при получении информации");
   }
-}
-
-async function handleGive(ctx) {
-  const text = ctx.message.text;
-  const parts = text.split(" ");
-
-  if (parts.length < 3) {
-    await ctx.reply(
-      `❌ **Использование:**\n` +
-        `/give @username количество предмет\n` +
-        `/give @username золото количество\n\n` +
-        `**Примеры:**\n` +
-        `/give @friend 1 Зелье лечения\n` +
-        `/give @friend золото 100`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const giver = await Character.findActive(userId, chatId);
-  if (!giver) {
-    await ctx.reply("❌ У вас нет персонажа!");
-    return;
-  }
-
-  // Получаем получателя
-  const targetUsername = parts[1].replace("@", "");
-  // В реальном боте здесь нужно получить ID пользователя по username
-  // Для примера используем упрощенную логику
-
-  await ctx.reply(
-    `⚠️ Функция передачи предметов в разработке.\n` +
-      `Используйте /trade для безопасного обмена.`,
-    { parse_mode: "Markdown" }
-  );
 }
 
 // Команда создания предложения обмена
@@ -2624,151 +1949,6 @@ async function handleChestCallback(ctx) {
   }
 }
 
-// Использование предмета
-async function handleUseItem(ctx) {
-  // Команда для использования предмета по названию
-  const text = ctx.message.text;
-  const itemName = text.replace("/use ", "").trim();
-
-  if (!itemName) {
-    await ctx.reply(
-      "❌ Укажите название предмета!\n" +
-        "Пример: /use Зелье лечения\n\n" +
-        "Для просмотра доступных предметов используйте /inventory",
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const character = await Character.findActive(userId, chatId);
-  if (!character) {
-    await ctx.reply("❌ У вас нет персонажа!");
-    return;
-  }
-
-  // Проверяем, не мертв ли персонаж
-  if (character.hp_current <= 0) {
-    await ctx.reply("☠️ Мертвые не могут использовать предметы!", {
-      parse_mode: "Markdown",
-    });
-    return;
-  }
-
-  // Ищем предмет в инвентаре по названию
-  const item = await db.get(
-    `
-    SELECT i.*, inv.id as inventory_id, inv.quantity 
-    FROM inventory inv
-    JOIN items i ON inv.item_id = i.id
-    WHERE inv.character_id = ? 
-      AND LOWER(i.name) = LOWER(?)
-      AND i.type = 'consumable'
-  `,
-    [character.id, itemName]
-  );
-
-  if (!item) {
-    // Пробуем поиск по частичному совпадению
-    const partialMatch = await db.get(
-      `
-      SELECT i.*, inv.id as inventory_id, inv.quantity 
-      FROM inventory inv
-      JOIN items i ON inv.item_id = i.id
-      WHERE inv.character_id = ? 
-        AND LOWER(i.name) LIKE LOWER(?)
-        AND i.type = 'consumable'
-      LIMIT 1
-    `,
-      [character.id, `%${itemName}%`]
-    );
-
-    if (!partialMatch) {
-      await ctx.reply(
-        `❌ Предмет "${itemName}" не найден или не может быть использован!\n\n` +
-          `Используйте /inventory для просмотра доступных расходников.`,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    // Если нашли частичное совпадение, используем его
-    item = partialMatch;
-  }
-
-  // Применяем эффекты предмета
-  const effects = JSON.parse(item.effects || "{}");
-  let message = `🧪 **Использован ${item.name}**\n`;
-  message += `_${item.description}_\n\n`;
-
-  let actuallyUsed = false;
-
-  // Применяем лечение
-  if (effects.hp && effects.hp > 0) {
-    const hpBefore = character.hp_current;
-    await character.modifyHP(effects.hp);
-    const hpAfter = character.hp_current;
-    const actualHealed = hpAfter - hpBefore;
-
-    if (actualHealed > 0) {
-      message += `❤️ Восстановлено ${actualHealed} HP (${hpBefore} → ${hpAfter}/${character.hp_max})\n`;
-      actuallyUsed = true;
-    } else {
-      message += `❤️ HP уже максимальное (${character.hp_max}/${character.hp_max})\n`;
-    }
-  }
-
-  // Применяем другие эффекты (для будущих расширений)
-  if (effects.mp) {
-    message += `💙 Восстановлено ${effects.mp} MP\n`;
-    actuallyUsed = true;
-  }
-
-  if (effects.invisibility) {
-    message += `👻 Вы невидимы на ${effects.invisibility} минут\n`;
-    actuallyUsed = true;
-  }
-
-  if (effects.teleport) {
-    message += `✨ Телепортация в безопасное место активирована!\n`;
-    actuallyUsed = true;
-  }
-
-  // Проверяем, был ли предмет полезен
-  if (!actuallyUsed && effects.hp) {
-    await ctx.reply(
-      `⚠️ **${item.name}** сейчас не нужен!\n\n` +
-        `Ваше HP уже максимальное: ${character.hp_current}/${character.hp_max}`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Уменьшаем количество предмета
-  await db.run("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?", [
-    item.inventory_id,
-  ]);
-
-  // Удаляем из инвентаря если закончился
-  await db.run("DELETE FROM inventory WHERE id = ? AND quantity <= 0", [
-    item.inventory_id,
-  ]);
-
-  // Добавляем информацию об оставшемся количестве
-  if (item.quantity > 1) {
-    message += `\n📦 Осталось: ${item.quantity - 1} шт.`;
-  } else {
-    message += `\n📦 Это был последний предмет!`;
-  }
-
-  await ctx.reply(message, { parse_mode: "Markdown" });
-
-  // Логируем использование
-  log(`${character.name} использовал ${item.name}`);
-}
-
 // Callback для экипировки предмета
 async function handleEquipItemCallback(ctx) {
   const userId = ctx.from.id;
@@ -3116,366 +2296,6 @@ async function handleCraftViewCallback(ctx) {
   });
 }
 
-// Обработчик использования предмета через callback
-async function handleUseItemCallback(ctx) {
-  const data = ctx.callbackQuery.data;
-  const itemId = data.replace("use_", ""); // Получаем ID предмета
-
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const character = await Character.findActive(userId, chatId);
-  if (!character) {
-    await ctx.answerCbQuery("❌ У вас нет персонажа!");
-    return;
-  }
-
-  // Проверяем, не мертв ли персонаж
-  if (character.hp_current <= 0) {
-    await ctx.answerCbQuery("☠️ Мертвые не могут использовать предметы!");
-    return;
-  }
-
-  // Получаем предмет из инвентаря
-  const item = await db.get(
-    `
-    SELECT i.*, inv.id as inventory_id, inv.quantity 
-    FROM inventory inv
-    JOIN items i ON inv.item_id = i.id
-    WHERE inv.character_id = ? AND inv.item_id = ?
-  `,
-    [character.id, itemId]
-  );
-
-  if (!item || item.type !== "consumable") {
-    await ctx.answerCbQuery(
-      "❌ Предмет не найден или не может быть использован!"
-    );
-    return;
-  }
-
-  // Применяем эффекты
-  const effects = JSON.parse(item.effects || "{}");
-  let message = `🧪 **Использован ${item.name}**\n`;
-  message += `_${item.description}_\n\n`;
-
-  let actuallyUsed = false;
-
-  // Применяем лечение
-  if (effects.hp && effects.hp > 0) {
-    const hpBefore = character.hp_current;
-    await character.modifyHP(effects.hp);
-    const hpAfter = character.hp_current;
-    const actualHealed = hpAfter - hpBefore;
-
-    if (actualHealed > 0) {
-      message += `❤️ Восстановлено ${actualHealed} HP (${hpBefore} → ${hpAfter}/${character.hp_max})\n`;
-      actuallyUsed = true;
-    } else {
-      await ctx.answerCbQuery("⚠️ HP уже максимальное!");
-      return;
-    }
-  }
-
-  // Применяем другие эффекты
-  if (effects.mp) {
-    message += `💙 Восстановлено ${effects.mp} MP\n`;
-    actuallyUsed = true;
-  }
-
-  if (effects.invisibility) {
-    message += `👻 Вы невидимы на ${effects.invisibility} минут\n`;
-    actuallyUsed = true;
-  }
-
-  if (effects.teleport) {
-    message += `✨ Телепортация в безопасное место активирована!\n`;
-    actuallyUsed = true;
-  }
-
-  // Если предмет не был полезен, не тратим его
-  if (!actuallyUsed) {
-    await ctx.answerCbQuery("⚠️ Этот предмет сейчас не нужен!");
-    return;
-  }
-
-  // Уменьшаем количество
-  await db.run("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?", [
-    item.inventory_id,
-  ]);
-
-  // Удаляем если кончились
-  await db.run("DELETE FROM inventory WHERE id = ? AND quantity <= 0", [
-    item.inventory_id,
-  ]);
-
-  // Добавляем информацию об оставшемся количестве
-  if (item.quantity > 1) {
-    message += `\n📦 Осталось: ${item.quantity - 1} шт.`;
-  } else {
-    message += `\n📦 Это был последний предмет!`;
-  }
-
-  await ctx.answerCbQuery("✅ Предмет использован!");
-
-  // Отправляем детальное сообщение
-  await ctx.reply(message, { parse_mode: "Markdown" });
-
-  // Обновляем сообщение с инвентарем
-  try {
-    await ctx.deleteMessage();
-  } catch (error) {
-    // Игнорируем ошибку если сообщение уже удалено
-  }
-
-  // Показываем обновленный инвентарь
-  await handleShowInventory(ctx);
-}
-
-async function handleGraveyard(ctx) {
-  const telegramId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  try {
-    // Получаем пользователя из БД
-    const user = await db.get("SELECT id FROM users WHERE telegram_id = ?", [
-      telegramId,
-    ]);
-
-    if (!user) {
-      await ctx.reply("❌ Пользователь не найден");
-      return;
-    }
-
-    // Получаем всех мертвых персонажей
-    const deadCharacters = await db.all(
-      `SELECT * FROM characters 
-       WHERE user_id = ? AND chat_id = ? AND hp_current <= 0 
-       ORDER BY created_at DESC 
-       LIMIT 10`,
-      [user.id, chatId]
-    );
-
-    if (deadCharacters.length === 0) {
-      await ctx.reply(
-        "⚰️ **Кладбище героев**\n\n" +
-          "Пока что здесь пусто. Ваши герои еще живы!\n" +
-          "Да пребудет с ними удача в опасных квестах.",
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    let message = "⚰️ **Кладбище героев**\n\n";
-    message += "_Здесь покоятся отважные герои, павшие в битвах..._\n\n";
-
-    for (const char of deadCharacters) {
-      const character = new Character(char);
-      const deathDate = new Date(char.created_at).toLocaleDateString("ru-RU");
-
-      message += `🪦 **${character.name}**\n`;
-      message += `${character.getFullTitle()} • ${character.level} уровень\n`;
-      message += `💀 Погиб: ${deathDate}\n`;
-      message += `✨ Опыт: ${character.experience} XP\n`;
-      message += `💰 Золото: ${character.gold}\n\n`;
-    }
-
-    message += "_Покойтесь с миром, храбрые воины._";
-
-    await ctx.reply(message, { parse_mode: "Markdown" });
-  } catch (error) {
-    log(`Ошибка показа кладбища: ${error.message}`, "error");
-    await ctx.reply("❌ Ошибка при загрузке кладбища героев");
-  }
-}
-
-// Удалить персонажа
-async function handleDeleteCharacter(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  const character = await Character.findActive(userId, chatId);
-
-  if (!character) {
-    await ctx.reply("❌ У вас нет персонажа!", { parse_mode: "Markdown" });
-    return;
-  }
-
-  await ctx.reply(
-    `⚠️ **Вы уверены, что хотите удалить персонажа?**\n\n` +
-      `Персонаж: ${character.name} (${character.level} уровень)\n` +
-      `Класс: ${character.getClassInfo()}\n\n` +
-      `Это действие необратимо!`,
-    {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "❌ Да, удалить", callback_data: "delete_confirm" },
-            { text: "✅ Отмена", callback_data: "delete_cancel" },
-          ],
-        ],
-      },
-    }
-  );
-}
-
-// Подтверждение удаления
-async function confirmDeleteCharacter(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  log(
-    `[Delete] Начинаем удаление персонажа для user ${userId} в чате ${chatId}`
-  );
-
-  const character = await Character.findActive(userId, chatId);
-
-  if (!character) {
-    await ctx.answerCbQuery("Персонаж не найден");
-    log(
-      `[Delete] Персонаж не найден для user ${userId} в чате ${chatId}`,
-      "warning"
-    );
-    return;
-  }
-
-  const characterName = character.name;
-  const characterId = character.id;
-  const characterUserId = character.user_id;
-
-  log(`[Delete] Удаляем персонажа: ${characterName} (ID: ${characterId})`);
-
-  await character.delete();
-
-  // Добавляем небольшую задержку для гарантии записи в БД
-  await new Promise((resolve) => setTimeout(resolve, 100));
-
-  // Проверяем, что персонаж действительно удален
-  const checkDeleted = await Character.findActive(userId, chatId);
-  if (checkDeleted) {
-    log(`[Delete] ОШИБКА: Персонаж ${characterName} не был удален!`, "error");
-
-    // Пробуем еще раз принудительно
-    const db = require("../database");
-    await db.run(
-      "UPDATE characters SET is_active = 0 WHERE id = ? AND user_id = ? AND chat_id = ?",
-      [characterId, characterUserId, chatId]
-    );
-  } else {
-    log(`[Delete] Персонаж ${characterName} успешно удален`);
-  }
-
-  await ctx.answerCbQuery("Персонаж удален!");
-  await ctx.editMessageText(
-    `✅ Персонаж ${characterName} был удален.\n\n` +
-      `Используйте /create для создания нового персонажа.`,
-    { parse_mode: "Markdown" }
-  );
-}
-
-async function handleShowQuest(ctx) {
-  const chatId = ctx.chat.id;
-  const userId = ctx.from.id;
-
-  // Получаем персонажа
-  const character = await Character.findActive(userId, chatId);
-  if (!character) {
-    await ctx.reply(
-      "❌ У вас нет персонажа!\n\nИспользуйте /create для создания.",
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Проверяем, не мертв ли персонаж
-  if (character.hp_current <= 0) {
-    await ctx.reply(
-      `☠️ **${character.name} мертв!**\n\n` +
-        `Ваш персонаж погиб с честью.\n` +
-        `HP: ${character.hp_current}/${character.hp_max}\n\n` +
-        `Используйте /create для создания нового персонажа.`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Получаем активный квест
-  const quest = await questSystem.getActiveQuest(chatId);
-  if (!quest) {
-    // Проверяем, можем ли получить новый квест
-    const canReceive = await questSystem.canReceiveQuest(chatId);
-
-    if (canReceive.can) {
-      // Пытаемся выдать новый квест
-      const newQuest = await questSystem.assignQuest(chatId);
-      if (newQuest) {
-        await showQuestInfo(ctx, newQuest, character);
-        return;
-      }
-    }
-
-    await ctx.reply(
-      `❌ Нет активного квеста!\n\n${
-        canReceive.reason || "Ждите автоматической выдачи."
-      }`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Показываем информацию о квесте
-  await showQuestInfo(ctx, quest, character);
-}
-
-// Показать информацию о квесте с кнопкой броска
-async function showQuestInfo(ctx, quest, character) {
-  const config = require("../config/config");
-  const statConfig = config.STATS[quest.stat_check];
-  const timeLeft = Math.ceil(
-    (new Date(quest.expires_at) - new Date()) / 1000 / 60
-  );
-
-  const difficultyEmoji = {
-    easy: "🟢",
-    medium: "🟡",
-    hard: "🔴",
-    epic: "🟣",
-    legendary: "⭐",
-  };
-
-  // Получаем модификатор персонажа
-  const statModifier = character.getRollBonus(quest.stat_check);
-  const modSign = statModifier >= 0 ? "+" : "";
-
-  const message = `
-🎯 **АКТИВНЫЙ КВЕСТ**
-
-${difficultyEmoji[quest.difficulty] || "❓"} **${quest.title}**
-${quest.description}
-
-📊 **Проверка:** ${statConfig.emoji} ${statConfig.name}
-🎲 **Ваш модификатор:** ${modSign}${statModifier}
-⏰ **Осталось времени:** ${timeLeft} мин
-💰 **Базовая награда:** ${quest.xp_reward} XP, ${quest.gold_reward} золота
-
-**Как это работает:**
-• Вы бросите 1d20 ${modSign}${statModifier}
-• Разные результаты дают разные награды
-• 20 - критический успех!
-• 1 - критический провал!
-`;
-
-  await ctx.reply(message, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "🎲 Бросить кубик!", callback_data: "quest_roll" }],
-      ],
-    },
-  });
-}
-
 // История квестов
 async function handleListQuests(ctx) {
   const userId = ctx.from.id;
@@ -3604,264 +2424,6 @@ async function handleTestName(ctx) {
       `• Или используйте /setname ИмяПерсонажа`,
     { parse_mode: "Markdown" }
   );
-}
-
-// Проверка прав бота
-async function handleCheckBot(ctx) {
-  const chatId = ctx.chat.id;
-  const chatType = ctx.chat.type;
-  const botId = ctx.botInfo.id;
-
-  let info = `🤖 **Информация о боте**\n\n`;
-  info += `• Тип чата: ${chatType}\n`;
-  info += `• ID чата: \`${chatId}\`\n`;
-  info += `• ID бота: ${botId}\n`;
-
-  if (chatType === "group" || chatType === "supergroup") {
-    try {
-      const chatMember = await ctx.getChatMember(botId);
-      info += `• Статус бота: ${chatMember.status}\n`;
-
-      if (chatMember.status === "administrator") {
-        info += `• Права админа: ✅\n`;
-        info += `• Может читать сообщения: ${
-          chatMember.can_read_all_group_messages ? "✅" : "❌"
-        }\n`;
-      } else {
-        info += `• Права админа: ❌\n`;
-      }
-    } catch (error) {
-      info += `• Ошибка получения прав: ${error.message}\n`;
-    }
-
-    info += `\n⚠️ **ВАЖНО для групп:**\n`;
-    info += `Для работы ввода имени персонажа в группе, бот должен:\n`;
-    info += `1. Быть администратором группы\n`;
-    info += `2. Иметь отключенный "Режим конфиденциальности" в @BotFather\n\n`;
-    info += `**Как исправить:**\n`;
-    info += `1. Сделайте бота администратором группы\n`;
-    info += `2. Или перейдите в @BotFather:\n`;
-    info += `   • /mybots → выберите бота\n`;
-    info += `   • Bot Settings → Group Privacy\n`;
-    info += `   • Выберите "Turn off"\n`;
-    info += `3. После изменения удалите и заново добавьте бота в группу\n`;
-  } else {
-    info += `\n✅ В приватном чате все должно работать!`;
-  }
-
-  await ctx.reply(info, { parse_mode: "Markdown" });
-}
-
-async function handleDebugCharacters(ctx) {
-  const telegramId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  try {
-    // Получаем пользователя из БД
-    const db = require("../database");
-    const user = await db.get("SELECT * FROM users WHERE telegram_id = ?", [
-      telegramId,
-    ]);
-
-    if (!user) {
-      await ctx.reply("❌ Пользователь не найден в БД");
-      return;
-    }
-
-    // Получаем все персонажи пользователя в этом чате
-    const characters = await db.all(
-      "SELECT * FROM characters WHERE user_id = ? AND chat_id = ? ORDER BY created_at DESC",
-      [user.id, chatId]
-    );
-
-    let message = `🔍 **Отладка персонажей**\n\n`;
-    message += `Telegram ID: \`${telegramId}\`\n`;
-    message += `User DB ID: \`${user.id}\`\n`;
-    message += `Chat ID: \`${chatId}\`\n\n`;
-
-    if (characters.length === 0) {
-      message += `❌ Персонажей не найдено`;
-    } else {
-      message += `**Найдено персонажей: ${characters.length}**\n\n`;
-
-      for (const char of characters) {
-        message += `**${char.name}**\n`;
-        message += `• ID: ${char.id}\n`;
-        message += `• Активен: ${char.is_active ? "✅" : "❌"}\n`;
-        message += `• Создан: ${new Date(char.created_at).toLocaleString()}\n`;
-        message += `• Уровень: ${char.level}\n\n`;
-      }
-    }
-
-    await ctx.reply(message, { parse_mode: "Markdown" });
-  } catch (error) {
-    const errorMessage = escapeMarkdown(error.message);
-    await ctx.reply(`❌ Ошибка: ${errorMessage}`, { parse_mode: "Markdown" });
-  }
-}
-
-// Прямой ввод имени через команду
-async function handleSetName(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-  const sessionKey = `${userId}_${chatId}`;
-
-  // Получаем сессию
-  const session = characterCreation.creationSessions.get(sessionKey);
-
-  if (!session || session.step !== "name") {
-    await ctx.reply(
-      `❌ Нет активной сессии создания персонажа на этапе ввода имени.\n\n` +
-        `Используйте /create для создания персонажа.`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Получаем имя из команды
-  const text = ctx.message.text;
-  const parts = text.split(" ");
-
-  if (parts.length < 2) {
-    await ctx.reply(
-      `❌ Использование: /setname ИмяПерсонажа\n\n` +
-        `Например: /setname Горак Сильный`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Собираем имя из всех частей после команды
-  const name = parts.slice(1).join(" ").trim();
-
-  // Валидация имени
-  if (name.length < 2 || name.length > 20) {
-    await ctx.reply("❌ Имя должно быть от 2 до 20 символов!");
-    return;
-  }
-
-  if (!/^[а-яА-ЯёЁa-zA-Z\s-]+$/.test(name)) {
-    await ctx.reply("❌ Имя может содержать только буквы, пробелы и дефисы!");
-    return;
-  }
-
-  // Сохраняем имя и переходим к генерации характеристик
-  session.data.name = name;
-  session.step = "stats";
-
-  log(`[SetName] Имя установлено: "${name}" для сессии ${sessionKey}`);
-
-  await ctx.reply(
-    `✅ Имя принято: **${name}**\n\nГенерируем характеристики...`,
-    { parse_mode: "Markdown" }
-  );
-
-  // Запускаем генерацию характеристик (true = новое сообщение, без анимации)
-  await characterCreation.generateStats(ctx, true);
-}
-
-// Быстрое создание персонажа для групп
-async function handleQuickCreate(ctx) {
-  const text = ctx.message.text;
-  const parts = text.split(" ");
-
-  if (parts.length < 4) {
-    await ctx.reply(
-      `❌ **Использование:**\n` +
-        `/quickcreate раса класс имя\n\n` +
-        `**Расы:** human, elf, dwarf, halfling\n` +
-        `**Классы:** WARRIOR, ROGUE, MAGE, CLERIC, BARBARIAN, RANGER\n\n` +
-        `**Пример:**\n` +
-        `/quickcreate human WARRIOR Горак Сильный`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  const race = parts[1].toLowerCase();
-  const characterClass = parts[2].toUpperCase();
-  const name = parts.slice(3).join(" ").trim();
-
-  // Валидация
-  const config = require("../config/config");
-
-  if (!config.RACES[race]) {
-    await ctx.reply(`❌ Неверная раса! Доступны: human, elf, dwarf, halfling`);
-    return;
-  }
-
-  if (!config.CLASSES[characterClass]) {
-    await ctx.reply(
-      `❌ Неверный класс! Доступны: WARRIOR, ROGUE, MAGE, CLERIC, BARBARIAN, RANGER`
-    );
-    return;
-  }
-
-  if (name.length < 2 || name.length > 20) {
-    await ctx.reply("❌ Имя должно быть от 2 до 20 символов!");
-    return;
-  }
-
-  if (!/^[а-яА-ЯёЁa-zA-Z\s-]+$/.test(name)) {
-    await ctx.reply("❌ Имя может содержать только буквы, пробелы и дефисы!");
-    return;
-  }
-
-  try {
-    // Создаем/обновляем пользователя
-    const user = await User.findOrCreate(ctx.from);
-
-    // Проверяем, нет ли уже персонажа
-    const existing = await Character.findActive(ctx.from.id, ctx.chat.id);
-    if (existing) {
-      await ctx.reply(
-        `❌ У вас уже есть персонаж: **${existing.name}**!\n\n` +
-          `Используйте /delete для удаления.`,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    await ctx.reply(
-      `🎲 **Создаем персонажа...**\n\n` +
-        `Раса: ${config.RACES[race].emoji} ${config.RACES[race].name}\n` +
-        `Класс: ${config.CLASSES[characterClass].emoji} ${config.CLASSES[characterClass].name}\n` +
-        `Имя: ${name}\n\n` +
-        `Генерируем характеристики...`,
-      { parse_mode: "Markdown" }
-    );
-
-    // Создаем персонажа с правильным user.id
-    const character = await Character.create(
-      user.id, // Используем ID из базы данных
-      ctx.chat.id,
-      name,
-      race,
-      characterClass
-    );
-
-    const display = await character.getFullDisplay();
-
-    await ctx.reply(
-      `🎉 **Персонаж создан!**\n\n${display}\n\n` +
-        `Используйте /hero для просмотра персонажа\n` +
-        `Квесты будут доступны с 10:00 до 22:00 МСК`,
-      { parse_mode: "Markdown" }
-    );
-
-    log(
-      `Быстрое создание персонажа: ${name} (${race} ${characterClass}) для пользователя ${ctx.from.id}`
-    );
-  } catch (error) {
-    log(`Ошибка быстрого создания персонажа: ${error.message}`, "error");
-
-    // Экранируем специальные символы для Markdown
-    const errorMessage = escapeMarkdown(error.message);
-
-    await ctx.reply(`❌ Ошибка создания: ${errorMessage}`, {
-      parse_mode: "Markdown",
-    });
-  }
 }
 
 module.exports = {
