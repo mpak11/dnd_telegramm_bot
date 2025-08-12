@@ -33,11 +33,6 @@ function setupCommands(bot) {
       await next();
     });
 
-    // Команды квестов
-    bot.command("quest", handleShowQuest);
-    bot.command("quests", handleListQuests);
-    bot.command("getquest", handleGetQuest);
-
     // Команды инвентаря
     bot.command("trade", handleTrade);
     bot.command("trades", handleActiveTrades);
@@ -1141,74 +1136,6 @@ async function createSimpleTradeOffer(ctx, fromCharacter, toCharacter) {
   );
 }
 
-async function handleGetQuest(ctx) {
-  const chatId = ctx.chat.id;
-
-  // Проверяем, есть ли ЖИВЫЕ персонажи в чате
-  const characters = await db.all(
-    "SELECT COUNT(*) as count FROM characters WHERE chat_id = ? AND is_active = 1 AND hp_current > 0",
-    [chatId]
-  );
-
-  if (characters[0].count === 0) {
-    await ctx.reply(
-      "❌ В этом чате нет живых персонажей!\n\n" +
-        "Все герои пали в битвах. 😢\n\n" +
-        "Создайте нового персонажа командой /create",
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Проверяем возможность получения квеста
-  const canReceive = await questSystem.canReceiveQuest(chatId);
-
-  if (!canReceive.can) {
-    await ctx.reply(`❌ Невозможно получить квест!\n\n${canReceive.reason}`, {
-      parse_mode: "Markdown",
-    });
-    return;
-  }
-
-  // Пытаемся назначить квест
-  const quest = await questSystem.assignQuest(chatId);
-
-  if (!quest) {
-    await ctx.reply("❌ Не удалось назначить квест. Попробуйте позже.", {
-      parse_mode: "Markdown",
-    });
-    return;
-  }
-
-  // Отправляем информацию о квесте
-  const config = require("../config/config");
-  const statConfig = config.STATS[quest.stat_check];
-  const difficultyEmoji = {
-    easy: "🟢",
-    medium: "🟡",
-    hard: "🔴",
-    epic: "🟣",
-    legendary: "⭐",
-  };
-
-  const message = `
-🎯 **НОВЫЙ КВЕСТ ПОЛУЧЕН!**
-
-${difficultyEmoji[quest.difficulty] || "❓"} **${quest.title}**
-${quest.description}
-
-📊 **Проверка:** ${statConfig.emoji} ${statConfig.name}
-⏰ **Время на выполнение:** 4 часа
-💰 **Базовая награда:** ${quest.xp_reward} XP, ${quest.gold_reward} золота
-
-Используйте /quest чтобы попытаться выполнить!
-`;
-
-  await ctx.reply(message, { parse_mode: "Markdown" });
-
-  log(`Квест "${quest.title}" выдан вручную для чата ${chatId}`);
-}
-
 async function handleUnequipItemCallback(ctx) {
   const userId = ctx.from.id;
   const chatId = ctx.chat.id;
@@ -2294,56 +2221,6 @@ async function handleCraftViewCallback(ctx) {
     parse_mode: "Markdown",
     reply_markup: { inline_keyboard: keyboard },
   });
-}
-
-// История квестов
-async function handleListQuests(ctx) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  // Получаем персонажа
-  const character = await Character.findActive(userId, chatId);
-  if (!character) {
-    await ctx.reply(
-      "❌ У вас нет персонажа!\n\nИспользуйте /create для создания.",
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  // Получаем историю
-  const history = await questSystem.getQuestHistory(character.id, 10);
-
-  if (history.length === 0) {
-    await ctx.reply(
-      `📜 **История квестов ${character.name}**\n\nВы еще не выполнили ни одного квеста!`,
-      { parse_mode: "Markdown" }
-    );
-    return;
-  }
-
-  const difficultyEmoji = {
-    easy: "🟢",
-    medium: "🟡",
-    hard: "🔴",
-    epic: "🟣",
-    legendary: "⭐",
-  };
-
-  let message = `📜 **История квестов ${character.name}**\n\n`;
-
-  for (const quest of history) {
-    const date = new Date(quest.completed_at).toLocaleDateString("ru-RU");
-    const successEmoji = quest.success ? "✅" : "❌";
-
-    message += `${successEmoji} ${difficultyEmoji[quest.difficulty]} **${
-      quest.title
-    }**\n`;
-    message += `   Бросок: ${quest.roll_result} | +${quest.xp_gained} XP | +${quest.gold_gained} 💰\n`;
-    message += `   ${date}\n\n`;
-  }
-
-  await ctx.reply(message, { parse_mode: "Markdown" });
 }
 
 async function handleAdmin(ctx) {

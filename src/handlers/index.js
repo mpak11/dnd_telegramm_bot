@@ -8,6 +8,7 @@ const characterStatsHandler = require("./character/CharacterStatsHandler");
 const characterDeleteHandler = require("./character/CharacterDeleteHandler");
 const graveyardHandler = require("./character/GraveyardHandler");
 const inventoryHandler = require("./inventory/InventoryHandler");
+const questHandler = require("./quests/QuestHandler");
 
 // TODO: добавить остальные handlers
 
@@ -50,6 +51,12 @@ function setupHandlers(bot) {
   bot.command("give", (ctx) => inventoryHandler.handleGive(ctx));
   bot.command("gift", (ctx) => inventoryHandler.handleGift(ctx));
 
+  // Квесты
+
+  bot.command("quest", (ctx) => questHandler.handleShowQuest(ctx));
+  bot.command("quests", (ctx) => questHandler.handleListQuests(ctx));
+  bot.command("getquest", (ctx) => questHandler.handleGetQuest(ctx));
+
   // TODO: добавить остальные команды
 
   // Настройка callback router
@@ -74,6 +81,9 @@ function setupHandlers(bot) {
   );
   callbackRouter.register("show_inventory", (ctx) =>
     inventoryHandler.handleShowInventory(ctx)
+  );
+  callbackRouter.register("quest_roll", (ctx) =>
+    questHandler.handleQuestRoll(ctx)
   );
 
   // TODO: добавить остальные callbacks
