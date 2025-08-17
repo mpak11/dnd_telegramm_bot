@@ -21,12 +21,12 @@ class CharacterHandler extends BaseHandler {
     }
 
     // Запускаем создание персонажа
-    await characterCreation.start(ctx);
+    await characterCreation.startCreation(ctx);
   }
 
   async handleShowCharacter(ctx) {
     await this.withCharacter(ctx, async (character) => {
-      let display = character.getDisplay();
+      let display = await character.getDisplay();
 
       // Добавляем информацию о смерти
       if (character.hp_current <= 0) {
