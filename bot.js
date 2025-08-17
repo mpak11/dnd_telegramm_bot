@@ -4,7 +4,7 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
 const config = require("./config/config");
-const { setupCommands } = require("./commands");
+const { setupHandlers } = require('./src/handlers');
 const { setupMiddleware } = require("./middleware");
 const { log } = require("./utils/logger");
 const questScheduler = require("./systems/questScheduler");
@@ -22,7 +22,7 @@ if (!config.BOT_TOKEN) {
 setupMiddleware(bot);
 
 // Настройка команд
-setupCommands(bot);
+setupHandlers(bot);
 
 // Обработка ошибок
 bot.catch((err, ctx) => {
