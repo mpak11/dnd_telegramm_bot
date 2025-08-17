@@ -183,7 +183,7 @@ class LootSystem {
       ]);
       
       return {
-        id: result.id,
+        id: result.lastID,
         ...item
       };
     } catch (error) {
@@ -346,7 +346,7 @@ class LootSystem {
     }
 
     // Сохраняем сундук в БД
-    const { id } = await db.run(`
+    const result = await db.run(`
       INSERT INTO loot_chests (
         chat_id, creator_id, gold, items, difficulty, expires_at
       ) VALUES (?, ?, ?, ?, ?, datetime('now', '+1 hour'))
@@ -358,7 +358,7 @@ class LootSystem {
       difficulty
     ]);
 
-    chest.id = id;
+    chest.id = result.lastID;
     log(`Создан сундук с лутом в чате ${chatId}: ${chest.items.length} предметов, ${chest.gold} золота`);
     
     return chest;
@@ -438,7 +438,7 @@ class LootSystem {
     }
 
     // Сохраняем особый сундук
-    const { id } = await db.run(`
+    const result = await db.run(`
       INSERT INTO loot_chests (
         chat_id, creator_id, gold, items, difficulty, expires_at
       ) VALUES (?, ?, ?, ?, ?, datetime('now', '+2 hours'))
@@ -450,7 +450,7 @@ class LootSystem {
       'epic'
     ]);
 
-    chest.id = id;
+    chest.id = result.lastID;
     log(`Создан ЭПИЧЕСКИЙ сундук в чате ${chatId}!`);
     
     return chest;

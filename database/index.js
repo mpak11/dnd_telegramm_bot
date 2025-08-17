@@ -48,7 +48,7 @@ class Database {
           logDatabase(`Ошибка запроса: ${err.message}`);
           reject(err);
         } else {
-          resolve({ id: this.lastID, changes: this.changes });
+          resolve({ lastID: this.lastID, changes: this.changes });
         }
       });
     });

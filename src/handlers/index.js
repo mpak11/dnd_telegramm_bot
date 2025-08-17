@@ -174,6 +174,17 @@ function setupHandlers(bot) {
     characterStatsHandler.handleImprovementCallback(ctx)
   );
 
+  const characterCreation = require("../../systems/character-creation");
+  callbackRouter.register("race_", (ctx) =>
+    characterCreation.handleCallback(ctx)
+  );
+  callbackRouter.register("class_", (ctx) =>
+    characterCreation.handleCallback(ctx)
+  );
+  callbackRouter.register("stats_", (ctx) =>
+    characterCreation.handleCallback(ctx)
+  );
+
   // TODO: добавить остальные callbacks
 
   // Устанавливаем общий обработчик callback_query

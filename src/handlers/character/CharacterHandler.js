@@ -1,6 +1,6 @@
 const BaseHandler = require('../../core/BaseHandler');
 const { Character } = require('../../../database/models');
-const characterCreation = require('../../../systems/characterCreation');
+const characterCreation = require('../../../systems/character-creation');
 const { log } = require('../../../utils/logger');
 const { escapeMarkdown } = require('../../../utils/markdown');
 const config = require('../../../config/config');
