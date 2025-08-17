@@ -1,5 +1,5 @@
 const BaseHandler = require('../../core/BaseHandler');
-const characterCreation = require('../../../systems/characterCreation');
+const characterCreation = require('../../../systems/character-creation');
 const { log } = require('../../../utils/logger');
 
 class AdminHandler extends BaseHandler {
